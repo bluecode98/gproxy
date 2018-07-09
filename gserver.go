@@ -522,7 +522,7 @@ func messageMain(srv *drive.Service, serverId string) error  {
 
 func main() {
 	// 获取主机ID
-	serverId := getClientId()
+	serverId := "201cc0a4e7b594ccd147ff2e6cad9cdf"
 
 	// init log config
 	backend2 := logging.NewLogBackend(os.Stderr, "", 0)
@@ -536,7 +536,7 @@ func main() {
 		os.Exit(0)
 	}
 	log.Debug("Login OK")
-	//log.Debug("server id:", serverId)
+	log.Debug("server id:", serverId)
 	//log.Debug("live report")
 	//go func() {
 	//	initLive(srv, serverId)
@@ -547,27 +547,27 @@ func main() {
 	//}()
 
 	// socks proxy
-	//go func() {
-	//	for {
-	//		indexName := serverId + ".socket"
-	//		queryString := fmt.Sprintf("name='%s'", indexName)
-	//		r, err := srv.Files.List().Q(queryString).
-	//			Fields("files(id, name, size)").Do()
-	//		if err != nil {
-	//			log.Error("Unable to retrieve files", err)
-	//			break
-	//		}
-	//
-	//		for _, i := range r.Files {
-	//			log.Debug("proxy on", i.Id)
-	//			//go socksCreate(srv, i.Id)
-	//			socksCreate(srv, i.Id)
-	//		}
-	//		time.Sleep(time.Duration(3)*time.Second)
-	//	}
-	//
-	//	os.Exit(0)
-	//}()
+	go func() {
+		for {
+			indexName := serverId + ".socket"
+			queryString := fmt.Sprintf("name='%s'", indexName)
+			r, err := srv.Files.List().Q(queryString).
+				Fields("files(id, name, size)").Do()
+			if err != nil {
+				log.Error("Unable to retrieve files", err)
+				break
+			}
+
+			for _, i := range r.Files {
+				log.Debug("proxy on", i.Id)
+				//go socksCreate(srv, i.Id)
+				socksCreate(srv, i.Id)
+			}
+			time.Sleep(time.Duration(3)*time.Second)
+		}
+
+		os.Exit(0)
+	}()
 
 
 	// 读取消息
