@@ -67,7 +67,8 @@ func socksCreate(srv *drive.Service, serverId string, fileId string)  {
 	tcpAddr, _ := net.ResolveTCPAddr("tcp4", string(recvData))
 	target, err := net.DialTCP("tcp", nil, tcpAddr)
 	if err != nil {
-		log.Error("connect error", err.Error())
+		//log.Error("connect error", err.Error())
+		//log.Debug("delete", fileId)
 		srv.Files.Delete(fileId).Do()
 		return
 	}
@@ -86,8 +87,6 @@ func socksCreate(srv *drive.Service, serverId string, fileId string)  {
 
 	// 更新输入数据文件
 	newFile = &drive.File{
-		Name: serverId + ".input",
-		MimeType: "application/octet-stream",
 		Description: outputId,		// 把回应的ID放到这个字段
 		AppProperties: map[string]string{
 			"typ":	"data",
@@ -251,8 +250,17 @@ func main() {
 				break
 			}
 
+			//log.Debug("recv", len(r.Files))
 			for _, i := range r.Files {
+				// 更新数据文件，防止重入
+				newFile := &drive.File{
+					Name: serverId + ".input",
+				}
+				srv.Files.Update(i.Id, newFile).Do()
+
+				// 处理数据
 				go socksCreate(srv, serverId, i.Id)
+				//time.Sleep(time.Duration(1)*time.Second)
 				//socksCreate(srv, i.Id)
 			}
 			time.Sleep(time.Duration(3)*time.Second)

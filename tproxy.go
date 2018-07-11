@@ -14,6 +14,7 @@ import (
 	"time"
 	"io/ioutil"
 	"flag"
+	"sync"
 )
 
 var log = logging.MustGetLogger("goserver")
@@ -21,6 +22,7 @@ var format = logging.MustStringFormatter(
 	//`%{time:15:04:05.000} %{shortfunc} > %{level:s} %{message}`,
 	`%{time:15:04:05.000} > %{level:s} %{message}`,
 )
+var lock sync.Mutex
 
 func main() {
 	// get param
@@ -61,6 +63,9 @@ func main() {
 		}
 
 		go handleClientRequest(srv, serverId, client)
+		//<- singleCh
+		//lock.Unlock()
+		log.Debug("next")
 	}
 }
 
