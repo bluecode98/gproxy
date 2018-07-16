@@ -98,8 +98,8 @@ func handleClientRequest(srv *drive.Service, serverId string, client net.Conn) {
 		//	host = net.IP{b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15], b[16], b[17], b[18], b[19]}.String()
 		//}
 
-		//if (b[3] == 0x01) && (b[4] == 172) {
-		if b[3] == 0x01 {
+		if (b[3] == 0x01) && (b[4] == 172) {
+		//if b[3] == 0x01 {
 			host = net.IPv4(b[4], b[5], b[6], b[7]).String()
 		} else {
 			log.Debug("not allowed IP")
