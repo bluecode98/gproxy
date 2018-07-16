@@ -16,6 +16,7 @@ import (
 	"os"
 	"net/http"
 	"encoding/json"
+	"compress/zlib"
 )
 
 var ver = "080704"
@@ -64,9 +65,9 @@ func socksCreate(srv *drive.Service, serverId string, fileId string)  {
 	}
 	content, _ := ioutil.ReadAll(response.Body)
 	response.Body.Close()
-	recvData := toolkits.AesDecrypt(content, key)
+	//recvData := toolkits.AesDecrypt(content, key)
 
-	tcpAddr, _ := net.ResolveTCPAddr("tcp4", string(recvData))
+	tcpAddr, _ := net.ResolveTCPAddr("tcp4", string(content))
 	target, err := net.DialTCP("tcp", nil, tcpAddr)
 	if err != nil {
 		//log.Error("connect error", err.Error())
@@ -99,7 +100,7 @@ func socksCreate(srv *drive.Service, serverId string, fileId string)  {
 
 	// pipeReader
 	go func() {
-		buffer := make([]byte, 10240)
+		buffer := make([]byte, 1024000)
 
 		for {
 			// 从socket读取数据
@@ -116,10 +117,17 @@ func socksCreate(srv *drive.Service, serverId string, fileId string)  {
 			}
 
 			// 加密数据
-			tempMedia := bytes.NewBuffer(nil)
-			tempMedia.Write(buffer[:n])
-			sendData := toolkits.AesEncrypt(tempMedia.Bytes(), toolkits.MessageKey)
-			sendMedia := bytes.NewBuffer(sendData)
+			//tempMedia := bytes.NewBuffer(nil)
+			//tempMedia.Write(buffer[:n])
+			//sendData := toolkits.AesEncrypt(tempMedia.Bytes(), toolkits.MessageKey)
+			//sendMedia := bytes.NewBuffer(sendData)
+			//sendMedia := bytes.NewBuffer(buffer[:n])
+			var in bytes.Buffer
+			w := zlib.NewWriter(&in)
+			w.Write(buffer[:n])
+			w.Close()
+			sendMedia := bytes.NewBuffer(in.Bytes())
+			log.Debug("zip", in.Len(), "byte(s)")
 
 			// 等待文件清空
 			for  {
@@ -188,10 +196,10 @@ func socksCreate(srv *drive.Service, serverId string, fileId string)  {
 			}
 			content, _ := ioutil.ReadAll(response.Body)
 			response.Body.Close()
-			recvData := toolkits.AesDecrypt(content, toolkits.MessageKey)
+			//recvData := toolkits.AesDecrypt(content, toolkits.MessageKey)
 
 			// 将数据写入socket
-			n, err := target.Write(recvData)
+			n, err := target.Write(content)
 			if err != nil {
 				log.Debug("send error", err.Error())
 				closeCh <- 1
@@ -261,6 +269,8 @@ func httpProxy(srv *drive.Service, serverId string, fileId string) {
 		log.Fatal(err)
 	}
 	response.Body.Close()
+	cookie := response.Header.Get("cookie")
+	log.Debug(cookie)
 
 	// 创建输出数据文件
 	newFile := &drive.File{
@@ -321,41 +331,21 @@ func main() {
 	//	}
 	//}()
 
-	// socks proxy
-	//go func() {
-	//	for {
-	//		indexName := serverId + ".socket"
-	//		queryString := fmt.Sprintf("name='%s'", indexName)
-	//		r, err := srv.Files.List().Q(queryString).
-	//			Fields("files(id, name, size)").Do()
-	//		if err != nil {
-	//			log.Error("Unable to retrieve files", err)
-	//			break
-	//		}
-	//
-	//		//log.Debug("recv", len(r.Files))
-	//		for _, i := range r.Files {
-	//			// 更新数据文件，防止重入
-	//			newFile := &drive.File{
-	//				Name: serverId + ".input",
-	//			}
-	//			srv.Files.Update(i.Id, newFile).Do()
-	//
-	//			// 处理数据
-	//			go socksCreate(srv, serverId, i.Id)
-	//			//time.Sleep(time.Duration(1)*time.Second)
-	//			//socksCreate(srv, i.Id)
-	//		}
-	//		time.Sleep(time.Duration(3)*time.Second)
-	//	}
-	//
-	//	os.Exit(0)
-	//}()
+	// clear temp file
+	//indexName := serverId + ".input"
+	queryString := fmt.Sprintf("name='%s.input' or name='%s.output'", serverId, serverId)
+	r, _ := srv.Files.List().Q(queryString).
+		Fields("files(id, name, size)").Do()
+	log.Debug("trash", len(r.Files))
+	for _, i := range r.Files {
+		// 删除数据
+		srv.Files.Delete(i.Id).Do()
+	}
 
-	// http proxy
+	// socks proxy
 	go func() {
 		for {
-			indexName := serverId + ".hpp"
+			indexName := serverId + ".socket"
 			queryString := fmt.Sprintf("name='%s'", indexName)
 			r, err := srv.Files.List().Q(queryString).
 				Fields("files(id, name, size)").Do()
@@ -373,15 +363,44 @@ func main() {
 				srv.Files.Update(i.Id, newFile).Do()
 
 				// 处理数据
-				go httpProxy(srv, serverId, i.Id)
-				//time.Sleep(time.Duration(1)*time.Second)
-				//socksCreate(srv, i.Id)
+				go socksCreate(srv, serverId, i.Id)
 			}
-			time.Sleep(time.Duration(3)*time.Second)
+			time.Sleep(time.Duration(1)*time.Second)
 		}
 
 		os.Exit(0)
 	}()
+
+	// http proxy
+	//go func() {
+	//	for {
+	//		indexName := serverId + ".hpp"
+	//		queryString := fmt.Sprintf("name='%s'", indexName)
+	//		r, err := srv.Files.List().Q(queryString).
+	//			Fields("files(id, name, size)").Do()
+	//		if err != nil {
+	//			log.Error("Unable to retrieve files", err)
+	//			break
+	//		}
+	//
+	//		//log.Debug("recv", len(r.Files))
+	//		for _, i := range r.Files {
+	//			// 更新数据文件，防止重入
+	//			newFile := &drive.File{
+	//				Name: serverId + ".input",
+	//			}
+	//			srv.Files.Update(i.Id, newFile).Do()
+	//
+	//			// 处理数据
+	//			go httpProxy(srv, serverId, i.Id)
+	//			//time.Sleep(time.Duration(1)*time.Second)
+	//			//socksCreate(srv, i.Id)
+	//		}
+	//		time.Sleep(time.Duration(3)*time.Second)
+	//	}
+	//
+	//	os.Exit(0)
+	//}()
 
 
 	// 读取消息

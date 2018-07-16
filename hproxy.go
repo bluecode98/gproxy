@@ -68,7 +68,7 @@ func main() {
 
 
 	log.Debug("listening...")
-	http.ListenAndServe(":8001", httpMux)
+	http.ListenAndServe(":8080", httpMux)
 
 
 	//handleClientHtmlRequest(srv, serverId)

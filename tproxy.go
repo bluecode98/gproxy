@@ -8,13 +8,14 @@ import (
 	"os"
 	"google.golang.org/api/drive/v3"
 	"./climanage"
-	"./toolkits"
+	//"./toolkits"
 	"fmt"
 	"bytes"
 	"time"
 	"io/ioutil"
 	"flag"
 	"sync"
+	"compress/zlib"
 )
 
 var log = logging.MustGetLogger("goserver")
@@ -98,8 +99,8 @@ func handleClientRequest(srv *drive.Service, serverId string, client net.Conn) {
 		//	host = net.IP{b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15], b[16], b[17], b[18], b[19]}.String()
 		//}
 
-		if (b[3] == 0x01) && (b[4] == 172) {
-		//if b[3] == 0x01 {
+		//if (b[3] == 0x01) && (b[4] == 172) {
+		if b[3] == 0x01 {
 			host = net.IPv4(b[4], b[5], b[6], b[7]).String()
 		} else {
 			log.Debug("not allowed IP")
@@ -121,11 +122,11 @@ func handleClientRequest(srv *drive.Service, serverId string, client net.Conn) {
 		}
 
 		// 加密数据
-		sendData := toolkits.AesEncrypt([]byte(remoteAddr), toolkits.MessageKey)
-		messageMedia := bytes.NewBuffer(sendData)
+		//sendData := toolkits.AesEncrypt([]byte(remoteAddr), toolkits.MessageKey)
+		sendMedia := bytes.NewBuffer([]byte(remoteAddr))
 
 		// 创建请求文件
-		nf, err := srv.Files.Create(newFile).Media(messageMedia).Do()
+		nf, err := srv.Files.Create(newFile).Media(sendMedia).Do()
 		if err != nil {
 			log.Debug("create proxy file error", err.Error())
 			client.Write([]byte{0x05, 0x02, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00})
@@ -164,8 +165,8 @@ func handleClientRequest(srv *drive.Service, serverId string, client net.Conn) {
 		// 进行数据转发
 		closeCh := make(chan error)
 		//abortCh := make(chan int)
-		go GetOutputData(srv, outputId, client, closeCh)
 		go GetInputData(srv, inputId, client, closeCh)
+		go GetOutputData(srv, outputId, client, closeCh)
 
 		// Wait
 		<- closeCh
@@ -196,10 +197,11 @@ func GetInputData(srv *drive.Service, fileId string, src io.Reader, errCh chan e
 			//log.Debug("client close")
 			break
 		}
-		tempMedia := bytes.NewBuffer(nil)
-		tempMedia.Write(buf[:n])
-		sendData := toolkits.AesEncrypt(tempMedia.Bytes(), toolkits.MessageKey)
-		sendMedia := bytes.NewBuffer(sendData)
+		//tempMedia := bytes.NewBuffer(nil)
+		//tempMedia.Write(buf[:n])
+		//sendData := toolkits.AesEncrypt(tempMedia.Bytes(), toolkits.MessageKey)
+		//sendMedia := bytes.NewBuffer(sendData)
+		sendMedia := bytes.NewBuffer(buf[:n])
 
 		// 等待上一次数据被处理
 		for {
@@ -209,18 +211,19 @@ func GetInputData(srv *drive.Service, fileId string, src io.Reader, errCh chan e
 				return
 			}
 			if media.Size == 0 {
-				// 提交数据
-				newFile := &drive.File{
-					AppProperties: map[string]string{
-						"typ":	"data",
-					},
-				}
-				srv.Files.Update(fileId, newFile).Media(sendMedia).Do()
-				log.Debug("send", n, "byte(s)")
 				break
 			}
 			time.Sleep(time.Duration(1) * time.Second)
 		}
+
+		// 提交数据
+		newFile := &drive.File{
+			AppProperties: map[string]string{
+				"typ":	"data",
+			},
+		}
+		srv.Files.Update(fileId, newFile).Media(sendMedia).Do()
+		log.Debug("send", n, "byte(s)")
 	}
 }
 
@@ -258,10 +261,14 @@ func GetOutputData(srv *drive.Service, fileId string, dst io.Writer, abortCh cha
 		}
 		content, _ := ioutil.ReadAll(response.Body)
 		response.Body.Close()
-		recvData := toolkits.AesDecrypt(content, toolkits.MessageKey)
+		//recvData := toolkits.AesDecrypt(content, toolkits.MessageKey)
+		var out bytes.Buffer
+		recvMedia := bytes.NewBuffer(content)
+		r, _ := zlib.NewReader(recvMedia)
+		io.Copy(&out, r)
 
 		// send to client
-		dst.Write(recvData)
+		dst.Write(out.Bytes())
 
 		// clear data
 		messageMedia := bytes.NewBuffer(nil)
