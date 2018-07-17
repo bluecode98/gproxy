@@ -59,8 +59,8 @@ func main() {
 	//	log.Panic(err)
 	//}
 	httpMux := http.NewServeMux()
-	//handle := http.HandlerFunc(msgHandler)
-	//httpMux.Handle("/", handle)
+	handle := http.HandlerFunc(msgHandler)
+	httpMux.Handle("/h", handle)
 
 	//noHandle := http.NotFoundHandler()
 	//httpMux.Handle("*", handle)
@@ -69,21 +69,6 @@ func main() {
 
 	log.Debug("listening...")
 	http.ListenAndServe(":8080", httpMux)
-
-
-	//handleClientHtmlRequest(srv, serverId)
-
-	//for {
-	//	client, err := l.Accept()
-	//	if err != nil {
-	//		log.Panic(err)
-	//	}
-	//
-	//	go handleClientRequest(srv, serverId, client)
-	//	//<- singleCh
-	//	//lock.Unlock()
-	//	log.Debug("next")
-	//}
 }
 
 func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
@@ -95,17 +80,25 @@ func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	d, _ := json.Marshal(newReq)
 	log.Debug("proxy", string(d))
+	fmt.Fprint(w, "200")
 	//path := newReq["path"]
 	//fmt.Fprint(w, path)
 	//fmt.Fprint(w, "not find")
-	recvData := handleClientHtmlRequest(gSrv, gServerId, d)
-	fmt.Fprint(w, recvData)
+	//recvData := handleClientHtmlRequest(gSrv, gServerId, d)
+	//fmt.Fprint(w, recvData)
 }
 
-//func msgHandler(w http.ResponseWriter, r *http.Request) {
-//	recvData := handleClientHtmlRequest(gSrv, gServerId)
-//	fmt.Fprint(w, recvData)
-//}
+func msgHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	id := r.Form["id"]
+	//id := r.FormValue("id")
+	//fmt.Fprint(w, r.RequestURI)
+	if len(id)>0 {
+		fmt.Fprint(w, "id:", id[0])
+	} else {
+		fmt.Fprint(w, "not find id")
+	}
+}
 
 func handleClientHtmlRequest(srv *drive.Service, serverId string, data []byte) string {
 	// 提交请求到远程
