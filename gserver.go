@@ -306,8 +306,8 @@ func httpProxy(srv *drive.Service, serverId string, fileId string) {
 
 func main() {
 	// 获取主机ID
-	serverId := "201cc0a4e7b594ccd147ff2e6cad9cdf"
-	//serverId := getClientId()
+	//serverId := "201cc0a4e7b594ccd147ff2e6cad9cdf"
+	serverId := getClientId()
 
 	// init log config
 	backend2 := logging.NewLogBackend(os.Stderr, "", 0)
