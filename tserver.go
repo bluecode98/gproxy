@@ -7,6 +7,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/satori/go.uuid"
+	"github.com/op/go-logging"
+	"os"
 )
 
 type ClientManager struct {
@@ -35,6 +37,12 @@ var manager = ClientManager{
 	clients:    make(map[*Client]bool),
 }
 
+var log = logging.MustGetLogger("goserver")
+var format = logging.MustStringFormatter(
+	//`%{time:15:04:05.000} %{shortfunc} > %{level:s} %{message}`,
+	`%{time:15:04:05.000} > %{level:s} %{message}`,
+)
+
 func (manager *ClientManager) start() {
 	for {
 		select {
@@ -46,8 +54,8 @@ func (manager *ClientManager) start() {
 			if _, ok := manager.clients[conn]; ok {
 				close(conn.send)
 				delete(manager.clients, conn)
-				jsonMessage, _ := json.Marshal(&Message{Content: "/A socket has disconnected."})
-				manager.send(jsonMessage, conn)
+				//jsonMessage, _ := json.Marshal(&Message{Content: "/A socket has disconnected."})
+				//manager.send(jsonMessage, conn)
 			}
 		case message := <-manager.broadcast:
 			for conn := range manager.clients {
@@ -63,11 +71,12 @@ func (manager *ClientManager) start() {
 }
 
 func (manager *ClientManager) send(message []byte, ignore *Client) {
-	for conn := range manager.clients {
-		if conn != ignore {
-			conn.send <- message
-		}
-	}
+	ignore.send <- message
+	//for conn := range manager.clients {
+	//	if conn != ignore {
+	//		conn.send <- message
+	//	}
+	//}
 }
 
 func (c *Client) read() {
@@ -83,6 +92,7 @@ func (c *Client) read() {
 			c.socket.Close()
 			break
 		}
+		log.Debug("recv", c.id, message)
 		jsonMessage, _ := json.Marshal(&Message{Sender: c.id, Content: string(message)})
 		manager.broadcast <- jsonMessage
 	}
@@ -107,6 +117,11 @@ func (c *Client) write() {
 }
 
 func main() {
+	// init log config
+	backend2 := logging.NewLogBackend(os.Stderr, "", 0)
+	backend2Formatter := logging.NewBackendFormatter(backend2, format)
+	logging.SetBackend(backend2Formatter)
+
 	fmt.Println("Starting application...")
 	go manager.start()
 	http.HandleFunc("/ws", wsPage)
@@ -119,7 +134,9 @@ func wsPage(res http.ResponseWriter, req *http.Request) {
 		http.NotFound(res, req)
 		return
 	}
-	client := &Client{id: uuid.Must(uuid.NewV4()).String(), socket: conn, send: make(chan []byte)}
+	clientID := uuid.Must(uuid.NewV4()).String()
+	client := &Client{id: clientID, socket: conn, send: make(chan []byte)}
+	log.Debug("client", clientID)
 
 	manager.register <- client
 
