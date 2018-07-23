@@ -374,7 +374,6 @@ func main() {
 
 
 	// 等待用户输入
-	//println("Input your command(Ctrl+c for quit):")
 	for {
 		var err error
 
