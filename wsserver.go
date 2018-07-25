@@ -119,13 +119,13 @@ func main() {
 			}()
 			proc.Wait()
 			//log.Debug("daemon end")
-			//time.Sleep(time.Duration(1)*time.Minute)
+			time.Sleep(time.Duration(1)*time.Minute)
 		}
 	}
 
 	conn, _, err := dialer.Dial(connectString, nil)
 	if err != nil {
-		fmt.Println(err)
+		log.Debug(err.Error())
 		return
 	}
 
